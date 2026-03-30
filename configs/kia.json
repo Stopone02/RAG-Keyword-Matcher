@@ -1,0 +1,46 @@
+{
+  "brand": "KIA",
+  "models": {
+    "soul": {
+      "url": "https://www.kia.com/us/en/soul/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "telluride": {
+      "url": "https://www.kia.com/us/en/telluride/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "sportage": {
+      "url": "https://www.kia.com/us/en/sportage/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    }
+  },
+  "symbol_map": {
+    "●": "Standard",
+    "○": "Optional",
+    "—": "Unavailable",
+    "–": "Unavailable",
+    "•": "Standard"
+  },
+  "wait_strategy": {
+    "wait_until": "domcontentloaded",
+    "wait_for_selector": ".section-wrapper"
+  }
+}
