@@ -124,16 +124,11 @@ class LexusSpecScraper:
                 # Step E: Expand all category drawers
                 self._expand_all_drawers(page, drawer_ids)
 
-                # Step F: Read visible trim headers
-                visible_trims = self._read_grid_headers(page, sel["trim_header"])
-                print(f"[INFO] Visible trims: {visible_trims}")
-
-                if not visible_trims:
-                    print(f"[WARN] No trim headers — skipping batch")
-                    # Go back to card view for next batch
-                    page.go_back()
-                    time.sleep(2)
-                    continue
+                # Step F: Use batch labels directly as column names (avoids DOM header noise)
+                # GridHeader selector returns duplicate/noisy elements (sticky + normal headers)
+                # so we trust the order we selected: intended_labels = [col0, col1, col2]
+                visible_trims = intended_labels
+                print(f"[INFO] Using trim columns: {visible_trims}")
 
                 # Step G: Parse the grid
                 batch_data = self._parse_grid(page, sel, visible_trims)
@@ -342,49 +337,103 @@ class LexusSpecScraper:
         return headers
 
     def _parse_grid(self, page, sel: dict, trim_headers: list) -> dict:
+        """
+        JavaScript로 브라우저 내에서 직접 추출.
+        Playwright 엘리먼트 핸들의 stale 문제를 완전히 우회.
+        """
         result = {name: {"price_msrp": "", "features": {}} for name in trim_headers}
+        n_trims = len(trim_headers)
 
-        for row_selector in [sel["data_row"], sel["features_row"]]:
-            rows = page.query_selector_all(row_selector)
-            for row in rows:
-                parsed = self._parse_row(row, len(trim_headers))
-                if parsed is None:
-                    continue
-                feature_name, values = parsed
-                for idx, val in enumerate(values):
-                    if idx < len(trim_headers):
-                        result[trim_headers[idx]]["features"][feature_name] = val
+        icon_map_js = {
+            "OptionalIcon": "Optional",
+            "NotAvailableIcon": "Unavailable",
+            "NotAvailablePlaceholder": "Unavailable",
+            "PackageIcon": "Package",
+        }
+
+        rows_data = page.evaluate("""
+            (nTrims) => {
+                const cleanText = t => t
+                    .replace(/[\\u24d8\\u2139*\\u2020\\u2021\\u00b6#]/g, '')
+                    .replace(/\\s+/g, ' ')
+                    .trim();
+
+                const cellValue = td => {
+                    if (td.querySelector('[data-testid="NotAvailableIcon"]') ||
+                        td.querySelector('[data-testid="NotAvailablePlaceholder"]'))
+                        return 'Unavailable';
+                    if (td.querySelector('[data-testid="OptionalIcon"]')) return 'Optional';
+                    if (td.querySelector('[data-testid="PackageIcon"]'))  return 'Package';
+                    const text = cleanText(td.innerText);
+                    return text || 'Unavailable';
+                };
+
+                const results = [];
+                const rows = document.querySelectorAll('[data-testid="DataRow"]');
+
+                rows.forEach(row => {
+                    const rowId = row.id || '';
+                    // BUILD 링크 행, 트림명 헤더 행은 제외
+                    if (rowId === 'build-link' || rowId === 'trim-name') return;
+
+                    const cells = [...row.querySelectorAll('[data-testid="FeaturesRow"]')];
+                    if (!cells.length) return;
+
+                    const th = row.querySelector('th');
+                    const thText = th ? cleanText(th.innerText) : '';
+
+                    if (thText) {
+                        // ── 유형 A: SPEC 행 ──────────────────────────────────
+                        // <th>에 기능명이 있고, 각 <td>에 수치/텍스트가 들어있음
+                        // 예) Engine | "In-line 4 hybrid" | "In-line 4 hybrid" | ...
+                        const values = cells.slice(0, nTrims).map(cellValue);
+                        while (values.length < nTrims) values.push('Unavailable');
+                        results.push([thText, values]);
+
+                    } else {
+                        // ── 유형 B: FEATURE 행 ───────────────────────────────
+                        // <th>가 비어있고, 포함된 트림의 <td>에 기능명 텍스트가 들어있음
+                        // 예) (빈th) | "Heated steering wheel" | "" | "Heated steering wheel"
+                        // → 기능명 = 텍스트가 있는 첫 번째 셀의 내용
+                        // → 값 = 텍스트 있으면 "Standard", NotAvailable 아이콘이면 "Unavailable"
+
+                        let featureName = '';
+                        for (const td of cells) {
+                            if (!td.querySelector('[data-testid="NotAvailableIcon"]') &&
+                                !td.querySelector('[data-testid="NotAvailablePlaceholder"]')) {
+                                const text = cleanText(td.innerText);
+                                if (text) { featureName = text; break; }
+                            }
+                        }
+                        if (!featureName) return;
+
+                        const values = cells.slice(0, nTrims).map(td => {
+                            if (td.querySelector('[data-testid="NotAvailableIcon"]') ||
+                                td.querySelector('[data-testid="NotAvailablePlaceholder"]'))
+                                return 'Unavailable';
+                            if (td.querySelector('[data-testid="OptionalIcon"]')) return 'Optional';
+                            if (td.querySelector('[data-testid="PackageIcon"]'))  return 'Package';
+                            const text = cleanText(td.innerText);
+                            return text ? 'Standard' : 'Unavailable';
+                        });
+
+                        while (values.length < nTrims) values.push('Unavailable');
+                        results.push([featureName, values]);
+                    }
+                });
+
+                return results;
+            }
+        """, n_trims)
+
+        print(f"[DEBUG] JS extracted {len(rows_data)} rows")
+
+        for feature_name, values in rows_data:
+            for idx, val in enumerate(values):
+                if idx < n_trims:
+                    result[trim_headers[idx]]["features"][feature_name] = val
 
         return result
-
-    def _parse_row(self, row, n_trims: int):
-        """
-        Returns (feature_name, [val, ...]) or None.
-        Tries direct children, then one level deeper.
-        """
-        try:
-            cells = row.query_selector_all("xpath=child::*")
-            if len(cells) < 2:
-                cells = row.query_selector_all("xpath=child::*/child::*")
-            if len(cells) < 2:
-                return None
-
-            feature_name = clean_text(cells[0].inner_text())
-            if not feature_name:
-                return None
-
-            values = []
-            for cell in cells[1: n_trims + 1]:
-                values.append(self._extract_cell_value(cell))
-
-            while len(values) < n_trims:
-                values.append("")
-
-            return feature_name, values
-
-        except Exception as e:
-            print(f"[WARN] _parse_row error: {e}")
-            return None
 
     def _extract_cell_value(self, cell) -> str:
         # 1. data-testid icon → mapped value
@@ -411,8 +460,9 @@ class LexusSpecScraper:
         except Exception:
             pass
 
-        # 4. No icon, no text → Standard (기본 포함)
-        return "Standard"
+        # 4. No icon, no text → Unavailable
+        # Lexus compare grid: Standard = description text in cell, empty = not available
+        return "Unavailable"
 
     # ------------------------------------------------------------------
     # Cookie banner
