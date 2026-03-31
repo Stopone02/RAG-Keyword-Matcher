@@ -1,0 +1,60 @@
+{
+  "brand": "Lexus",
+  "models": {
+    "ux-hybrid": {
+      "url": "https://www.lexus.com/models/UX-hybrid",
+      "compare_anchor": "#model_compare",
+      "batch_size": 3,
+      "all_trims": [
+        { "label": "300h",                   "select_id": "a300h-select" },
+        { "label": "300h AWD",               "select_id": "a300h-awd-select" },
+        { "label": "300h Premium",           "select_id": "a300h-premium-select" },
+        { "label": "300h Premium AWD",       "select_id": "a300h-premium-awd-select" },
+        { "label": "300h F SPORT Design",    "select_id": "a300h-f-sport-design--select" },
+        { "label": "300h F SPORT Design AWD","select_id": "a300h-f-sport-design-awd-select" },
+        { "label": "300h F SPORT Handling",  "select_id": "a300h-f-sport-handling--select" },
+        { "label": "300h F SPORT Handling AWD","select_id": "a300h-f-sport-handling-awd-select" }
+      ],
+      "selectors": {
+        "compare_section": "#model_compare",
+        "controls_row": "[data-testid='ControlsRow']",
+        "trim_header": "[data-testid='GridHeader']",
+        "data_row": "[data-testid='DataRow']",
+        "features_row": "[data-testid='FeaturesRow']",
+        "optional_icon": "[data-testid='OptionalIcon']",
+        "not_available_icon": "[data-testid='NotAvailableIcon']",
+        "not_available_placeholder": "[data-testid='NotAvailablePlaceholder']",
+        "package_icon": "[data-testid='PackageIcon']"
+      },
+      "category_drawer_ids": [
+        "engine-specs-compare-drawer",
+        "chassis-specs-compare-drawer",
+        "drivetrain-specs-compare-drawer",
+        "dimensions-specs-compare-drawer",
+        "performance-specs-compare-drawer",
+        "key-features-specs-compare-drawer",
+        "exterior-features-features-compare-drawer",
+        "interior-features-features-compare-drawer",
+        "safety-features-compare-drawer",
+        "technology-features-compare-drawer",
+        "performance-features-compare-drawer"
+      ]
+    }
+  },
+  "symbol_map": {
+    "●": "Standard",
+    "○": "Optional",
+    "—": "Unavailable",
+    "–": "Unavailable"
+  },
+  "icon_map": {
+    "OptionalIcon": "Optional",
+    "NotAvailableIcon": "Unavailable",
+    "NotAvailablePlaceholder": "Unavailable",
+    "PackageIcon": "Package"
+  },
+  "wait_strategy": {
+    "wait_until": "domcontentloaded",
+    "wait_for_selector": "[data-testid='CompareGrid']"
+  }
+}

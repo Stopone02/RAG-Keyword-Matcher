@@ -5,6 +5,9 @@ Run this first to capture raw HTML for selector analysis.
 Usage:
     python fetch_html.py --brand kia --model soul
     python fetch_html.py --brand kia --model soul --no-headless
+
+    # Lexus (URL이 바뀌지 않는 SPA — 수동으로 Compare 화면까지 이동 후 Resume)
+    python fetch_html.py --brand lexus --model ux-hybrid --no-headless --pause
 """
 
 import argparse
@@ -33,6 +36,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-headless", action="store_true",
         help="Show browser window",
+    )
+    parser.add_argument(
+        "--pause", action="store_true",
+        help="Pause after page load so you can manually navigate to the target view, "
+             "then resume in Playwright Inspector to save HTML. "
+             "Requires --no-headless.",
     )
     return parser.parse_args()
 
@@ -83,6 +92,10 @@ def main() -> None:
 
     print(f"[INFO] Target URL: {url}")
 
+    if args.pause and not args.no_headless:
+        print("[WARN] --pause requires --no-headless. Adding --no-headless automatically.")
+        args.no_headless = True
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not args.no_headless)
         page = browser.new_page()
@@ -104,6 +117,11 @@ def main() -> None:
                 print(f"[INFO] Selector '{wait_sel}' found — page ready")
             except PlaywrightTimeoutError:
                 print(f"[WARN] wait_for_selector '{wait_sel}' timed out — saving anyway")
+
+        if args.pause:
+            print("\n[PAUSE] 브라우저에서 원하는 화면(Compare 등)으로 이동하세요.")
+            print("        준비되면 Playwright Inspector 창에서 [Resume] 버튼을 클릭하세요.\n")
+            page.pause()
 
         # Save full HTML
         html_content = page.content()

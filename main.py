@@ -4,6 +4,11 @@ import sys
 from pathlib import Path
 
 from engine.scraper import SpecScraper
+from engine.lexus_scraper import LexusSpecScraper
+
+_BRAND_SCRAPER = {
+    "lexus": LexusSpecScraper,
+}
 
 
 def load_config(brand: str) -> dict:
@@ -62,7 +67,8 @@ def main() -> None:
         print("[ERROR] Specify --model <name> or --all")
         sys.exit(1)
 
-    scraper = SpecScraper(config, headless=headless)
+    scraper_class = _BRAND_SCRAPER.get(args.brand.lower(), SpecScraper)
+    scraper = scraper_class(config, headless=headless)
     results = []
 
     for model in models_to_crawl:
