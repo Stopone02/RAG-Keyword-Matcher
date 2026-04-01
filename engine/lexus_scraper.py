@@ -395,27 +395,28 @@ class LexusSpecScraper:
                     return text || 'Unavailable';
                 };
 
-                // drawer ID → 버튼 텍스트(카테고리명) 매핑
+                // drawer 버튼들을 문서 순서대로 수집
                 // 실제 버튼 ID 패턴: {drawerId}-drawer-button
-                const drawerLabelMap = {};
+                const drawerButtons = [];
                 for (const drawerId of drawerIds) {
                     const btn = document.getElementById(`${drawerId}-drawer-button`);
-                    if (btn) drawerLabelMap[drawerId] = cleanText(btn.innerText);
+                    if (btn) drawerButtons.push({ btn, label: cleanText(btn.innerText) });
                 }
+                drawerButtons.sort((a, b) =>
+                    a.btn.compareDocumentPosition(b.btn) & 4 ? -1 : 1
+                );
 
-                // DataRow의 DOM 조상을 올라가며 drawer ID와 매칭
+                // DataRow보다 앞에 위치한 drawer 버튼 중 가장 마지막 것이 해당 카테고리
                 const getCategory = row => {
-                    let el = row.parentElement;
-                    while (el) {
-                        if (el.id && drawerLabelMap[el.id] !== undefined)
-                            return drawerLabelMap[el.id];
-                        el = el.parentElement;
+                    let label = '';
+                    for (const { btn, label: l } of drawerButtons) {
+                        if (btn.compareDocumentPosition(row) & 4) label = l;
                     }
-                    return '';
+                    return label;
                 };
 
                 // FeatureTags(아이콘+라벨 영역)를 제외한 순수 기능명 텍스트 추출
-                // 예) "Auto-dimming rearview mirror\nAvailable as option" → "Auto-dimming rearview mirror"
+                // 예) "Auto-dimming rearview mirror Available as option" → "Auto-dimming rearview mirror"
                 const getFeatureName = td => {
                     const clone = td.cloneNode(true);
                     clone.querySelectorAll('[data-testid="FeatureTags"]').forEach(el => el.remove());
