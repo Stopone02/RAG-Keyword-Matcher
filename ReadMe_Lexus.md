@@ -35,7 +35,9 @@
 | 한 화면의 트림 수 | 전체 트림 동시 표시 | **최대 3개 트림만 표시** |
 | 전체 트림 수 | 모델마다 다름 | **8개** (300h ~ F SPORT Handling AWD) |
 | 셀렉터 방식 | CSS class 기반 | **`data-testid` 속성 기반** (안정적) |
+| 트림 선택 UI | 드롭다운 (select/option) | **체크박스** (`input[name='model_compare-select']`) + COMPARE 버튼 |
 | 기호 표현 | 텍스트 (`●`, `○`, `—`) | **SVG 아이콘** (`data-testid="OptionalIcon"` 등) + 텍스트 수치 혼재 |
+| 파싱 방식 | Playwright 엘리먼트 핸들 | **`page.evaluate()` JS 파싱** (stale element 방지) |
 
 ### Lexus 수집의 핵심 제약
 
@@ -58,11 +60,18 @@
 ```
 1. https://www.lexus.com/models/UX-hybrid 접속
 
-2. 페이지 내 COMPARE 버튼 클릭 (URL은 그대로)
-   └─ #model_compare 섹션으로 스크롤
+2. 페이지 내 네비게이션 버튼 클릭으로 Compare 섹션 이동
+   └─ 선택자: #arrowbutton 또는 a[href='#model_compare']
+   └─ 클릭 실패 시 fallback: document.querySelector('#model_compare')?.scrollIntoView()
 
-3. Compare Grid 노출 (한 화면에 3개 트림)
-   └─ data-testid="CompareGrid" 컨테이너 내부에 데이터 렌더링
+3. Compare Grid 대기 및 노출
+   └─ wait_for_selector("[data-testid='CompareGrid']") 로 렌더링 확인
+
+4. 트림 체크박스 선택 (배치별)
+   └─ input[name='model_compare-select'] 체크박스로 최대 3개 선택
+   └─ COMPARE 버튼(button[aria-label='COMPARE']) 활성화 후 클릭
+
+5. Compare Grid에 3개 트림 데이터 렌더링
 ```
 
 ### 전체 트림 목록 (8개, HTML에서 확인됨)
@@ -84,15 +93,18 @@
 [data-testid="CompareGrid"]
   └── [data-testid="CompareGridImpl"]
         └── [data-testid="CompareGridTabsImpl"]
-              ├── [data-testid="ControlsRow"]     ← 트림 선택 드롭다운 행
-              ├── [data-testid="GridHeader"]      ← 현재 표시 중인 트림명 (3개)
-              ├── [data-testid="DataRow"]         ← 수치 사양 행 (반복)
-              │     └── 첫 번째 셀: 사양명
-              │         나머지 셀: 각 트림의 값 (텍스트 수치)
-              └── [data-testid="FeaturesRow"]     ← 기능 포함 여부 행 (반복)
-                    └── 첫 번째 셀: 기능명
-                        나머지 셀: 아이콘 또는 텍스트
+              ├── [data-testid="GridHeader"]      ← 현재 표시 중인 트림명 (th, 3개)
+              └── [data-testid="DataRow"] (tr)    ← 모든 데이터 행 (반복)
+                    ├── <th>                      ← 사양/기능명 셀
+                    │     유형 A (SPEC): 사양명 텍스트 (예: "Engine", "Displacement")
+                    │     유형 B (FEATURE): 비어있음 (th 텍스트 없음)
+                    └── <td data-testid="FeaturesRow"> × N  ← 트림별 값 셀
+                          유형 A: 텍스트 수치 (예: "In-line 4 hybrid", "2.0L")
+                          유형 B: 기능명 텍스트 (있는 트림) 또는 NotAvailableIcon
 ```
+
+> **주의**: `FeaturesRow`는 독립된 행이 아니라 `DataRow(tr)` 내부 `<td>` 셀의 `data-testid` 값입니다.
+> 즉, `DataRow` 하나가 사양/기능 한 항목을 나타내며, 그 안의 `td[data-testid="FeaturesRow"]`들이 트림별 값입니다.
 
 ### 카테고리 섹션 (드로어 ID 확인됨)
 
@@ -114,7 +126,7 @@
 
 ### 기호 표현 방식 (HTML에서 확인됨)
 
-렉서스 비교 페이지는 기호를 `data-testid` 아이콘으로 표현합니다.
+렉서스 비교 페이지는 기호를 `data-testid` 아이콘과 텍스트로 혼합 표현합니다.
 
 | data-testid | 의미 | 정규화 값 |
 |---|---|---|
@@ -122,8 +134,12 @@
 | `NotAvailableIcon` | 해당 트림 미제공 | `"Unavailable"` |
 | `NotAvailablePlaceholder` | 해당 트림 미제공 (자리 표시자) | `"Unavailable"` |
 | `PackageIcon` | 패키지로 추가 가능 | `"Package"` |
-| (텍스트 수치) | `"110 MPH"`, `"2.0L"` 등 | 원문 그대로 |
-| (텍스트 없음 + 아이콘 없음) | 기본 포함 | `"Standard"` |
+| (텍스트 수치, SPEC 행) | `"110 MPH"`, `"2.0L"` 등 | 원문 그대로 |
+| (텍스트 있음, FEATURE 행) | 기능명 텍스트 존재 | `"Standard"` |
+| (빈 셀, FEATURE 행) | 아이콘/텍스트 없음 | `"Unavailable"` |
+
+> **FEATURE 행 셀 내부 구조**: 기능명 텍스트는 첫 번째 `<span>` 안에, 아이콘은 `<div data-testid="FeatureTags">` 안에 위치합니다.
+> `NotAvailableIcon`이 있는 셀의 `innerText`는 "not availableNA"로 나타납니다.
 
 ---
 
@@ -145,61 +161,114 @@ trims = [A, B, C, D, E, F, G, H]  (8개)
 
 Compare 버튼 클릭 시 URL이 바뀌지 않으므로 `page.goto()`로 직접 접근 불가.
 
-**→ 해결: 모델 페이지 진입 후 `#model_compare` 앵커로 스크롤**
+**→ 해결: 모델 페이지 진입 후 네비게이션 버튼 클릭 또는 앵커 스크롤**
 
 ```python
 page.goto("https://www.lexus.com/models/UX-hybrid")
-page.wait_for_selector("[data-testid='CompareGrid']")
-# CompareGrid가 뷰포트에 들어올 때까지 스크롤
-page.evaluate("document.getElementById('model_compare').scrollIntoView()")
+
+# 1차: 페이지 내 네비게이션 버튼 클릭
+nav_btn = page.wait_for_selector(
+    "#arrowbutton, a[href='#model_compare']", timeout=15000
+)
+nav_btn.scroll_into_view_if_needed()
+nav_btn.click()
+
+# fallback: 직접 앵커로 스크롤
+page.evaluate("document.querySelector('#model_compare')?.scrollIntoView()")
+
+# CompareGrid 렌더링 대기
+page.wait_for_selector("[data-testid='CompareGrid']", timeout=30000)
 ```
 
-### Challenge 3 — 트림 선택 방식 (ControlsRow)
+### Challenge 3 — 트림 선택 방식 (체크박스 + COMPARE 버튼)
 
-각 열의 드롭다운으로 트림을 변경해야 하는데, `ControlsRow` 내부의 실제 상호작용 방식(select vs 커스텀 div)은 `--pause` 모드에서 추가 검증 필요.
+실제 DOM 검증 결과, ControlsRow 드롭다운 방식이 아닌 **카드형 체크박스** UI로 트림을 선택합니다.
 
-**→ 해결: ID 기반 클릭 우선, 실패 시 커스텀 드롭다운 방식 전환**
+**→ 해결: 체크박스 JavaScript 클릭 → COMPARE 버튼 활성화 대기 → 클릭**
 
 ```python
-# 방법 A: ID 직접 클릭 (a300h-select 등이 클릭 가능 요소인 경우)
-page.click("#a300h-awd-select")
+# Step A: 기존 체크 해제
+page.evaluate("""
+    () => {
+        const cbs = document.querySelectorAll(
+            "input[name='model_compare-select']:checked"
+        );
+        cbs.forEach(cb => cb.click());
+    }
+""")
 
-# 방법 B: ControlsRow 내 select/option 조작
-page.select_option("[data-testid='ControlsRow'] select:nth-child(1)", label="300h AWD")
+# Step B: 배치 트림 체크 (JavaScript로 ID 직접 클릭)
+page.evaluate(f"""
+    () => {{
+        const cb = document.getElementById('{trim["select_id"]}');
+        if (cb && !cb.checked) cb.click();
+    }}
+""")
+
+# Step C: COMPARE 버튼 활성화 후 클릭
+page.wait_for_selector(
+    "button[aria-label='COMPARE']:not([aria-disabled='true'])", timeout=10000
+)
+page.click("button[aria-label='COMPARE']:not([aria-disabled='true'])")
 ```
 
-### Challenge 4 — SVG 아이콘 기반 기호 처리
+### Challenge 4 — SVG 아이콘 기반 기호 처리 (JavaScript 파싱)
 
-텍스트가 아닌 `data-testid` 아이콘으로 기호를 표현합니다.
+텍스트가 아닌 `data-testid` 아이콘으로 기호를 표현하며, Playwright 엘리먼트 핸들의 stale 문제를 방지하기 위해 JavaScript로 브라우저 내에서 직접 추출합니다.
 
-**→ 해결: `data-testid` 탐지 우선, 텍스트 폴백**
+**→ 해결: `page.evaluate()`로 전체 그리드를 JS 내에서 파싱**
 
-```python
-def extract_cell_value(cell):
-    # 1. 아이콘 data-testid 확인
-    for testid, value in icon_map.items():
-        if cell.query_selector(f"[data-testid='{testid}']"):
-            return value
-    # 2. 텍스트 수치
-    text = cell.inner_text().strip()
-    if text:
-        return text
-    # 3. 빈 셀 = Standard (기본 포함)
-    return "Standard"
+```javascript
+// JS 내부 cellValue 헬퍼 (SPEC 행 값 추출)
+const cellValue = td => {
+    if (td.querySelector('[data-testid="NotAvailableIcon"]') ||
+        td.querySelector('[data-testid="NotAvailablePlaceholder"]'))
+        return 'Unavailable';
+    if (td.querySelector('[data-testid="OptionalIcon"]')) return 'Optional';
+    if (td.querySelector('[data-testid="PackageIcon"]'))  return 'Package';
+    const text = cleanText(td.innerText);
+    return text || 'Unavailable';
+};
+
+// FEATURE 행: 텍스트 있으면 'Standard', 없으면 'Unavailable'
+const featureValue = td => {
+    if (/* NotAvailable 아이콘 */) return 'Unavailable';
+    if (/* Optional 아이콘 */)     return 'Optional';
+    if (/* Package 아이콘 */)      return 'Package';
+    return cleanText(td.innerText) ? 'Standard' : 'Unavailable';
+};
 ```
 
 ### Challenge 5 — 카테고리 드로어 펼침
 
 각 카테고리(ENGINE, DIMENSIONS 등)가 드로어로 접혀 있을 수 있습니다.
 
-**→ 해결: 수집 전 모든 드로어 펼치기**
+**→ 해결: `aria-expanded` 속성으로 접힘 여부 확인 후 펼치기**
 
 ```python
 for drawer_id in category_drawer_ids:
     btn = page.query_selector(f"#{drawer_id}-button")
-    if btn and "collapsed" in (btn.get_attribute("class") or ""):
+    if not btn:
+        continue
+    aria = btn.get_attribute("aria-expanded") or ""
+    if aria.lower() == "false":
+        btn.scroll_into_view_if_needed()
         btn.click()
-        page.wait_for_load_state("networkidle")
+        time.sleep(0.3)
+```
+
+### Challenge 6 — 배치 간 오버레이 복귀
+
+COMPARE 버튼 클릭 후 비교 오버레이가 열리며, 다음 배치를 위해 카드 선택 화면으로 되돌아가야 합니다.
+
+**→ 해결: 오버레이 닫기 버튼 클릭 또는 Escape 키**
+
+```python
+# 오버레이 닫기 시도 순서:
+# 1. aria-label='Close' 버튼
+# 2. .overlay-component--open button.close
+# 3. fallback: Escape 키
+# 4. overlay 사라짐 + 체크박스 재활성화 확인
 ```
 
 ---
@@ -209,23 +278,33 @@ for drawer_id in category_drawer_ids:
 ```
 [LexusSpecScraper.scrape_model("ux-hybrid")]
          │
-         ├─ 1. 모델 페이지 접속 → CompareGrid 대기
+         ├─ 1. 모델 페이지 접속 (domcontentloaded)
          │
-         ├─ 2. #model_compare 섹션으로 스크롤
+         ├─ 2. 쿠키 배너 닫기 (_dismiss_cookie_banner)
          │
-         ├─ 3. configs에서 all_trims (8개) 읽기 → 3개씩 배치 생성
+         ├─ 3. #arrowbutton / a[href='#model_compare'] 클릭으로 Compare 섹션 이동
+         │     실패 시 fallback: scrollIntoView('#model_compare')
+         │
+         ├─ 4. wait_for_selector("[data-testid='CompareGrid']") 대기
+         │
+         ├─ 5. configs에서 all_trims (8개) 읽기 → 3개씩 배치 생성
          │     [A,B,C], [D,E,F], [G,H,A(패딩)]
          │
-         ├─ 4. 배치 루프
+         ├─ 6. 배치 루프 (Step A~I)
          │     for batch in batches:
-         │       ├─ 각 열에 트림 선택 (ControlsRow 조작)
-         │       ├─ networkidle 대기
-         │       ├─ 모든 카테고리 드로어 펼치기
-         │       ├─ DataRow 파싱 → { 사양명: {트림: 값} }
-         │       ├─ FeaturesRow 파싱 → { 기능명: {트림: 아이콘값} }
-         │       └─ master_data에 upsert
+         │       ├─ A: _uncheck_all() → 기존 체크 해제 (JS)
+         │       ├─ B: _check_trims() → 배치 트림 체크박스 선택 (JS)
+         │       ├─ C: _click_compare_button() → COMPARE 버튼 클릭
+         │       ├─ D: CompareGrid/ControlsRow 렌더링 대기
+         │       ├─ E: _expand_all_drawers() → 드로어 전체 펼치기 (aria-expanded 기준)
+         │       ├─ F: visible_trims = intended_labels (DOM 헤더 대신 배치 레이블 직접 사용)
+         │       ├─ G: _parse_grid() → JS로 DataRow 전체 파싱
+         │       │     ├─ 유형 A (th 텍스트 있음): 사양명 + 텍스트 수치
+         │       │     └─ 유형 B (th 비어있음): 기능명(NotAvailable 셀 제외) + 아이콘값
+         │       ├─ H: master_data upsert (패딩 트림 제외, setdefault로 덮어쓰기 방지)
+         │       └─ I: _close_compare_overlay() → 다음 배치를 위해 카드 뷰 복귀
          │
-         └─ 5. storage/raw/lexus_ux-hybrid_raw.json 저장
+         └─ 7. storage/raw/lexus_ux-hybrid_raw.json 저장
 ```
 
 ---
@@ -282,20 +361,25 @@ CarSpec-Crawler/
     │
     └── [engine/lexus_scraper.py] LexusSpecScraper
             │
-            ├── 1. 브라우저 실행
-            ├── 2. https://www.lexus.com/models/UX-hybrid 접속
-            ├── 3. wait_for_selector("[data-testid='CompareGrid']")
-            ├── 4. #model_compare 스크롤
-            ├── 5. configs에서 8개 트림 → 3개씩 배치
-            ├── 6. 배치별 루프
-            │     ├─ ControlsRow 트림 선택
-            │     ├─ 드로어 전체 펼치기
-            │     ├─ DataRow / FeaturesRow 파싱
-            │     │     ├─ GridHeader → 현재 3개 트림명
-            │     │     ├─ 첫 번째 셀 = 사양/기능명
-            │     │     └─ 나머지 셀 = 아이콘 testid 또는 텍스트 수치
-            │     └─ master_data upsert
-            └── 7. JSON 저장
+            ├── 1. 브라우저 실행 (headless/non-headless)
+            ├── 2. https://www.lexus.com/models/UX-hybrid 접속 (domcontentloaded)
+            ├── 3. 쿠키 배너 닫기
+            ├── 4. #arrowbutton 클릭 → Compare 섹션 이동
+            │     fallback: scrollIntoView('#model_compare')
+            ├── 5. wait_for_selector("[data-testid='CompareGrid']")
+            ├── 6. configs에서 8개 트림 → 3개씩 배치 (_make_batches)
+            ├── 7. 배치별 루프
+            │     ├─ _uncheck_all()          ← JS로 기존 체크 해제
+            │     ├─ _check_trims()          ← JS로 배치 트림 체크박스 선택
+            │     ├─ _click_compare_button() ← COMPARE 버튼 활성화 대기 후 클릭
+            │     ├─ CompareGrid 렌더링 대기
+            │     ├─ _expand_all_drawers()   ← aria-expanded=false 드로어 펼치기
+            │     ├─ _parse_grid()           ← JS evaluate로 DataRow 전체 파싱
+            │     │     ├─ 유형 A (th 있음): 사양명 + 수치 텍스트
+            │     │     └─ 유형 B (th 없음): 기능명 + 아이콘값(Optional/Package/Unavailable/Standard)
+            │     ├─ master_data upsert (setdefault, 패딩 트림 제외)
+            │     └─ _close_compare_overlay() ← 오버레이 닫기 → 카드 뷰 복귀
+            └── 8. JSON 저장 (storage/raw/lexus_ux-hybrid_raw.json)
 ```
 
 ---
@@ -436,14 +520,16 @@ python main.py --brand lexus --model ux-hybrid --no-headless
 
 | 항목 | 내용 |
 |---|---|
-| **배치 커버리지 보장** | 8개 트림이 모두 최소 1번 포함되도록 배치 구성 |
-| **트림 선택 후 대기** | ControlsRow 조작 후 `networkidle` 대기 필수 |
-| **드로어 전체 펼침** | DataRow/FeaturesRow 수집 전 11개 드로어 모두 펼치기 |
-| **아이콘 우선 탐지** | `data-testid` 아이콘 확인 → 텍스트 → "Standard" 순 |
-| **upsert 병합** | 이미 수집된 트림/기능은 덮어쓰지 않음 |
-| **패딩 트림 중복 방지** | 마지막 배치 패딩 트림의 데이터는 병합 시 무시 |
-| **요청 간 딜레이** | 배치 간 2~3초 딜레이 |
-| **로깅** | 배치 번호, 트림 조합, 수집 행 수, 소요 시간 출력 |
+| **배치 커버리지 보장** | 8개 트림이 모두 최소 1번 포함되도록 배치 구성, 마지막 배치는 첫 트림으로 패딩 |
+| **체크박스 방식 사용** | ControlsRow 드롭다운이 아닌 `input[name='model_compare-select']` 체크박스 + COMPARE 버튼 |
+| **COMPARE 버튼 대기** | `aria-disabled='true'`가 해제될 때까지 대기 후 클릭 |
+| **드로어 전체 펼침** | 수집 전 `aria-expanded="false"` 드로어 11개 모두 펼치기 |
+| **JS 평가로 파싱** | Playwright stale element 방지를 위해 `page.evaluate()`로 JS 내에서 전체 그리드 파싱 |
+| **아이콘 우선 탐지** | NotAvailableIcon/Placeholder → "Unavailable" / OptionalIcon → "Optional" / PackageIcon → "Package" / 텍스트 있음(FEATURE) → "Standard" |
+| **upsert 병합** | `setdefault(feat, val)`로 이미 수집된 트림/기능은 덮어쓰지 않음 |
+| **패딩 트림 중복 방지** | `intended_labels`에 없는 트림은 병합 시 무시 |
+| **오버레이 닫기** | 배치 완료 후 close 버튼 또는 Escape로 오버레이 닫고 카드 뷰 복귀 확인 |
+| **로깅** | 배치 번호, 트림 조합, 파싱된 행 수, 전체 소요 시간 출력 |
 
 ---
 
@@ -451,12 +537,13 @@ python main.py --brand lexus --model ux-hybrid --no-headless
 
 | 증상 | 원인 | 해결 방법 |
 |---|---|---|
-| `CompareGrid` 셀렉터 타임아웃 | 페이지 로딩 중 Compare 섹션이 뷰포트 밖에 있음 | `scrollIntoView()` 후 셀렉터 대기 |
-| 트림 선택 후 데이터 미변경 | `select_id` 방식이 커스텀 드롭다운과 맞지 않음 | `ControlsRow` 내 실제 인터랙션 방식 추가 검증 필요 |
-| DataRow가 0개 | 드로어가 접혀 있어 행이 렌더링 안 됨 | 드로어 펼치기 로직 확인 |
-| 값 셀이 모두 `"Standard"` | 아이콘 탐지 로직이 잘못된 셀렉터 사용 | `icon_map`의 testid 값 재검증 |
-| 특정 트림 select_id 미작동 | F SPORT 트림의 ID에 `--` 이중 대시 포함 | `#a300h-f-sport-design--select` 형태 그대로 사용 |
-| 배치 중 일부 트림 누락 | 배치 패딩 로직 오류 | `set(all_trim_labels) == set(master_data.keys())` 검증 |
+| `CompareGrid` 셀렉터 타임아웃 | 페이지 로딩 지연 또는 네비게이션 버튼 미발견 | `debug_compare.png` / `debug_compare.html` 저장됨 → data-testid 목록 출력으로 진단 |
+| COMPARE 버튼이 활성화 안 됨 | 체크박스 선택 실패 (select_id 미일치 등) | `[WARN] Checkbox not found: #...` 로그 확인, select_id 재검증 |
+| DataRow가 0개 파싱됨 | 드로어가 접혀 있어 행이 렌더링 안 됨 | `_expand_all_drawers()` 호출 로그 확인 |
+| 값 셀이 모두 `"Unavailable"` | 아이콘 탐지 셀렉터 불일치 또는 FEATURE 행 기능명 추출 실패 | debug HTML로 실제 data-testid 값 재검증 |
+| 특정 트림 체크박스 미작동 | F SPORT 트림의 select_id에 `--` 이중 대시 포함 | `a300h-f-sport-design--select` 형태 그대로 사용 확인 |
+| 오버레이가 닫히지 않음 | close 버튼 셀렉터 불일치 | Escape 키 fallback 동작 확인, `overlay-component--open` 셀렉터 재검증 |
+| 배치 중 일부 트림 누락 | 배치 패딩 로직 오류 | 완료 후 `[WARN] Missing trims:` 로그 확인, `_make_batches()` 로직 검토 |
 
 ---
 
