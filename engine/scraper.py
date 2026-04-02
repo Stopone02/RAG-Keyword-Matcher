@@ -84,10 +84,12 @@ class SpecScraper:
                 browser.close()
                 return None
 
+            row_categories = self._get_row_categories(page, selectors["spec_row"])
+
             total_rows = 0
             skipped_rows = 0
 
-            for row in rows:
+            for row_idx, row in enumerate(rows):
                 total_rows += 1
 
                 feature_el = row.query_selector(selectors["feature_name"])
@@ -110,10 +112,15 @@ class SpecScraper:
                     skipped_rows += 1
                     continue
 
+                category = row_categories[row_idx] if row_idx < len(row_categories) else ""
+
                 for idx, cell in enumerate(value_els):
                     raw_value = self._extract_cell_value(cell)
                     normalized = convert_symbol(raw_value, self.symbol_map)
-                    trims_data[trim_names[idx]]["features"][feature_name] = normalized
+                    trims_data[trim_names[idx]]["features"][feature_name] = {
+                        "value": normalized,
+                        "category": category,
+                    }
 
             elapsed = round(time.time() - start_time, 2)
             print(
@@ -188,12 +195,8 @@ class SpecScraper:
         return prices
 
     def _extract_cell_value(self, cell) -> str:
-        # 1. Try innerText first
-        text = cell.inner_text().strip()
-        if text:
-            return text
-
-        # 2. Try child element class / data-icon attribute (SVG icon fallback)
+        # 1. Child element class / data-icon attribute (SVG icon detection first)
+        #    Handles pages where availability is expressed via CSS class (e.g. Kia)
         try:
             child = cell.query_selector("[class]")
             if child:
@@ -202,16 +205,18 @@ class SpecScraper:
                     return icon
 
                 cls = (child.get_attribute("class") or "").lower()
+                # Check unavailable FIRST — "unavailable" contains "available",
+                # so order matters to avoid false Optional matches.
+                if any(k in cls for k in ("unavailable", "not-available")):
+                    return "—"
                 if any(k in cls for k in ("standard", "filled", "included", "yes")):
                     return "●"
                 if any(k in cls for k in ("optional", "available", "pkg")):
                     return "○"
-                if any(k in cls for k in ("unavailable", "not-available", " na", "no")):
-                    return "—"
         except Exception:
             pass
 
-        # 3. aria-label fallback
+        # 2. aria-label fallback
         try:
             aria = cell.get_attribute("aria-label") or ""
             if aria:
@@ -219,7 +224,77 @@ class SpecScraper:
         except Exception:
             pass
 
+        # 3. innerText — plain text values (e.g. "27/33/30 MPG", color names)
+        #    Also handles "trim - feature - Status" accessibility text pattern
+        text = cell.inner_text().strip()
+        if text:
+            if " - " in text:
+                last_part = text.rsplit(" - ", 1)[-1].strip()
+                if last_part in ("Included", "Optional", "Unavailable", "Standard", "Not Available"):
+                    return last_part
+            return text
+
         return ""
+
+    def _get_row_categories(self, page, spec_row_selector: str) -> list[str]:
+        """Return a category string for every spec row (in DOM order).
+
+        Walks up the DOM from each row to find the nearest ancestor with a
+        'meta-category' attribute (Kia-style pages).  Falls back to walking
+        backward through siblings to find the nearest non-row element with text.
+        A single JS evaluate call handles all rows at once.
+        """
+        try:
+            escaped = spec_row_selector.replace("'", "\\'")
+            categories = page.evaluate(f"""() => {{
+                const rows = document.querySelectorAll('{escaped}');
+                const results = [];
+                for (const row of rows) {{
+                    let category = '';
+
+                    // Strategy 1: walk up to the category container and read its
+                    // visible title element — preserves &, / and other chars that
+                    // the meta-category attribute strips.
+                    let el = row.parentElement;
+                    while (el) {{
+                        if (el.classList && el.classList.contains('specs-compare__category')) {{
+                            // Prefer the dedicated .title child (avoids availability-bar text)
+                            const titleEl = el.querySelector('.specs-compare__category--title .title');
+                            if (titleEl) {{
+                                category = (titleEl.innerText || titleEl.textContent || '').trim();
+                            }} else {{
+                                const catTitle = el.querySelector('.specs-compare__category--title');
+                                if (catTitle) {{
+                                    category = (catTitle.innerText || catTitle.textContent || '')
+                                        .split('\\n')[0].trim();
+                                }}
+                            }}
+                            if (!category) category = el.getAttribute('meta-category') || '';
+                            break;
+                        }}
+                        el = el.parentElement;
+                    }}
+
+                    // Strategy 2: fallback — nearest preceding non-row sibling with text
+                    if (!category) {{
+                        let sibling = row.previousElementSibling;
+                        while (sibling) {{
+                            if (!sibling.matches('{escaped}')) {{
+                                const text = (sibling.innerText || sibling.textContent || '').trim();
+                                if (text) {{ category = text; break; }}
+                            }}
+                            sibling = sibling.previousElementSibling;
+                        }}
+                    }}
+
+                    results.push(category);
+                }}
+                return results;
+            }}""")
+            return [clean_text(c) for c in (categories or [])]
+        except Exception as e:
+            print(f"[WARN] Could not extract row categories: {e}")
+            return []
 
     def _extract_year(self, url: str) -> int:
         match = re.search(r"(20\d{2})", url)

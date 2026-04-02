@@ -29,10 +29,9 @@ class LexusSpecScraper:
             return None
 
         url = model_config["url"]
-        sel = model_config["selectors"]
-        all_trims = model_config["all_trims"]
+        sel = model_config.get("selectors", {})
+        all_trims = model_config.get("all_trims")       # None이면 자동 감지
         batch_size = model_config.get("batch_size", 3)
-        drawer_ids = model_config.get("category_drawer_ids", [])
         compare_anchor = model_config.get("compare_anchor", "#model_compare")
 
         with sync_playwright() as p:
@@ -87,6 +86,15 @@ class LexusSpecScraper:
                     """)
                     print(f"[DEBUG] data-testid values on page: {testids}")
 
+            # --- Auto-detect trims if not in config ---
+            if not all_trims:
+                all_trims = self._detect_trims(page)
+                if not all_trims:
+                    print(f"[ERROR] Could not detect trims from page")
+                    browser.close()
+                    return None
+                print(f"[INFO] Auto-detected {len(all_trims)} trims: {[t['label'] for t in all_trims]}")
+
             # --- Build batches ---
             batches = self._make_batches(all_trims, batch_size)
             print(f"[INFO] {len(all_trims)} trims → {len(batches)} batches of {batch_size}")
@@ -121,15 +129,16 @@ class LexusSpecScraper:
 
                 time.sleep(1)
 
-                # Step E: Expand all category drawers
-                self._expand_all_drawers(page, drawer_ids)
+                # Step E: 매 배치마다 현재 DOM의 drawer를 확장
+                # (배치별로 선택된 트림에 따라 drawer 구성이 달라질 수 있음)
+                self._expand_all_drawers(page)
 
                 # Step F: 실제 DOM 컬럼 순서를 읽어 intended_labels와 순서 검증
                 visible_trims = self._read_column_order(page, intended_labels)
                 print(f"[INFO] Using trim columns: {visible_trims}")
 
                 # Step G: Parse the grid
-                batch_data = self._parse_grid(page, sel, visible_trims, drawer_ids)
+                batch_data = self._parse_grid(page, sel, visible_trims)
                 total_features = sum(len(v["features"]) for v in batch_data.values())
                 print(f"[INFO] Parsed {total_features} feature entries across {len(batch_data)} trims")
 
@@ -168,6 +177,50 @@ class LexusSpecScraper:
             "source_url": url,
             "trims": master_data,
         }
+
+    # ------------------------------------------------------------------
+    # Auto-detection
+    # ------------------------------------------------------------------
+
+    def _detect_trims(self, page) -> list:
+        """페이지의 트림 선택 카드에서 label과 checkbox ID를 자동 감지."""
+        try:
+            trims = page.evaluate("""
+                () => {
+                    const clean = t => t.replace(/\\s+/g, ' ').trim();
+                    const results = [];
+                    for (const card of document.querySelectorAll('[data-testid="Card"]')) {
+                        const h2 = card.querySelector('h2');
+                        const cb = card.querySelector('input[name="model_compare-select"]');
+                        if (!h2 || !cb) continue;
+                        results.push({ label: clean(h2.innerText), select_id: cb.id });
+                    }
+                    return results;
+                }
+            """)
+            return trims or []
+        except Exception as e:
+            print(f"[WARN] _detect_trims error: {e}")
+            return []
+
+    def _detect_drawer_ids(self, page) -> list:
+        """페이지의 drawer 버튼 ID를 문서 순서대로 자동 감지.
+        ID 패턴: {drawer_id}-drawer-button → drawer_id만 추출."""
+        try:
+            ids = page.evaluate("""
+                () => {
+                    const results = [];
+                    for (const btn of document.querySelectorAll('[id$="-drawer-button"][aria-expanded]')) {
+                        const drawerId = btn.id.replace(/-drawer-button$/, '');
+                        results.push(drawerId);
+                    }
+                    return results;
+                }
+            """)
+            return ids or []
+        except Exception as e:
+            print(f"[WARN] _detect_drawer_ids error: {e}")
+            return []
 
     # ------------------------------------------------------------------
     # Batch helpers
@@ -301,21 +354,24 @@ class LexusSpecScraper:
     # Drawer expansion
     # ------------------------------------------------------------------
 
-    def _expand_all_drawers(self, page, drawer_ids: list) -> None:
+    def _expand_all_drawers(self, page) -> None:
+        """현재 DOM의 모든 drawer 버튼을 스캔해서 접힌 것을 모두 펼침.
+        배치마다 호출하므로 모델/배치별로 달라지는 drawer 구성에 자동 대응."""
         expanded = 0
-        for drawer_id in drawer_ids:
-            try:
-                btn = page.query_selector(f"#{drawer_id}-drawer-button")
-                if not btn:
+        try:
+            btns = page.query_selector_all("[id$='-drawer-button'][aria-expanded]")
+            for btn in btns:
+                try:
+                    aria = btn.get_attribute("aria-expanded") or ""
+                    if aria.lower() == "false":
+                        btn.scroll_into_view_if_needed()
+                        btn.click()
+                        time.sleep(0.3)
+                        expanded += 1
+                except Exception:
                     continue
-                aria = btn.get_attribute("aria-expanded") or ""
-                if aria.lower() == "false":
-                    btn.scroll_into_view_if_needed()
-                    btn.click()
-                    time.sleep(0.3)
-                    expanded += 1
-            except Exception:
-                continue
+        except Exception as e:
+            print(f"[WARN] _expand_all_drawers error: {e}")
         if expanded:
             print(f"[INFO] Expanded {expanded} drawer(s)")
             time.sleep(1.5)  # 모든 드로어 애니메이션 및 lazy DOM 렌더링 완료 대기
@@ -364,20 +420,17 @@ class LexusSpecScraper:
             print(f"[WARN] _read_column_order error: {e}")
         return intended_labels
 
-    def _parse_grid(self, page, sel: dict, trim_headers: list, drawer_ids: list) -> dict:
+    def _parse_grid(self, page, sel: dict, trim_headers: list) -> dict:
         """
         JavaScript로 브라우저 내에서 직접 추출.
         Playwright 엘리먼트 핸들의 stale 문제를 완전히 우회.
-        카테고리는 각 DataRow의 DOM 조상을 올라가며 drawer ID와 매칭해 drawer 버튼 텍스트로 결정.
+        카테고리는 DOM의 모든 drawer 버튼을 직접 스캔해 aria-controls 기반으로 결정.
         """
         result = {name: {"price_msrp": "", "features": {}} for name in trim_headers}
         n_trims = len(trim_headers)
 
         rows_data = page.evaluate("""
-            (args) => {
-                const nTrims   = args.nTrims;
-                const drawerIds = args.drawerIds;
-
+            (nTrims) => {
                 const cleanText = t => t
                     .replace(/[\\u24d8\\u2139*\\u2020\\u2021\\u00b6#]/g, '')
                     .replace(/\\s+/g, ' ')
@@ -390,30 +443,29 @@ class LexusSpecScraper:
                 const cellValue = td => {
                     if (isUnavailable(td))           return 'Unavailable';
                     if (hasIcon(td, 'OptionalIcon')) return 'Optional';
-                    if (hasIcon(td, 'PackageIcon'))  return 'Standard';
+                    if (hasIcon(td, 'PackageIcon'))  return 'Optional';
                     const text = cleanText(td.innerText);
                     return text || 'Unavailable';
                 };
 
-                // drawer 버튼들을 문서 순서대로 수집
-                // 실제 버튼 ID 패턴: {drawerId}-drawer-button
-                const drawerButtons = [];
-                for (const drawerId of drawerIds) {
-                    const btn = document.getElementById(`${drawerId}-drawer-button`);
-                    if (btn) drawerButtons.push({ btn, label: cleanText(btn.innerText) });
-                }
-                drawerButtons.sort((a, b) =>
-                    a.btn.compareDocumentPosition(b.btn) & 4 ? -1 : 1
-                );
-
-                // DataRow보다 앞에 위치한 drawer 버튼 중 가장 마지막 것이 해당 카테고리
-                const getCategory = row => {
-                    let label = '';
-                    for (const { btn, label: l } of drawerButtons) {
-                        if (btn.compareDocumentPosition(row) & 4) label = l;
+                // DOM의 모든 drawer 버튼을 스캔해 aria-controls 기반 rowId → 카테고리 매핑
+                // design-options(색상 스와치), key-features(summary)는 제외
+                const SKIP_DRAWERS = new Set([
+                    'design-options-swatches-compare-drawer',
+                    'key-features-specs-compare-drawer',
+                ]);
+                const rowCategoryMap = {};
+                for (const btn of document.querySelectorAll('[id$="-drawer-button"][aria-controls]')) {
+                    const drawerId = btn.id.replace(/-drawer-button$/, '');
+                    if (SKIP_DRAWERS.has(drawerId)) continue;
+                    const label = cleanText(btn.innerText);
+                    for (const ctrlId of (btn.getAttribute('aria-controls') || '').split(/\s+/)) {
+                        const baseId = ctrlId.replace(/^column-\d+-/, '');
+                        if (baseId && !rowCategoryMap[baseId]) rowCategoryMap[baseId] = label;
                     }
-                    return label;
-                };
+                }
+
+                const getCategory = row => rowCategoryMap[row.id] || '';
 
                 // FeatureTags(아이콘+라벨 영역)를 제외한 순수 기능명 텍스트 추출
                 // 예) "Auto-dimming rearview mirror Available as option" → "Auto-dimming rearview mirror"
@@ -423,7 +475,30 @@ class LexusSpecScraper:
                     return cleanText(clone.innerText);
                 };
 
-                const results = [];
+                // 값 우선순위: Optional(2) > Standard(1) > Unavailable(0)
+                // 같은 featureName이 DOM에 두 번 나타날 때(일반 drawer + Package drawer)
+                // 더 높은 우선순위 값으로 머지
+                const PRIORITY = { 'Optional': 2, 'Standard': 1, 'Unavailable': 0 };
+                const mergeVal = (a, b) => PRIORITY[a] >= PRIORITY[b] ? a : b;
+
+                // featureName → [values, category] 머지 맵
+                const mergeMap = new Map();
+
+                const upsert = (featureName, values, category) => {
+                    if (!mergeMap.has(featureName)) {
+                        mergeMap.set(featureName, { values: [...values], category });
+                        return;
+                    }
+                    const existing = mergeMap.get(featureName);
+                    for (let i = 0; i < values.length; i++) {
+                        existing.values[i] = mergeVal(existing.values[i], values[i]);
+                    }
+                    // 카테고리는 Optional 값이 있는 쪽 우선
+                    if (values.some(v => v === 'Optional') && !existing.values.some(v => v === 'Optional')) {
+                        existing.category = category;
+                    }
+                };
+
                 const rows = document.querySelectorAll('[data-testid="DataRow"]');
 
                 rows.forEach(row => {
@@ -440,16 +515,12 @@ class LexusSpecScraper:
 
                     if (thText) {
                         // ── 유형 A: SPEC 행 ──────────────────────────────────
-                        // <th>에 기능명이 있고, 각 <td>에 수치/텍스트가 들어있음
                         const values = cells.slice(0, nTrims).map(cellValue);
                         while (values.length < nTrims) values.push('Unavailable');
-                        results.push([thText, values, category]);
+                        upsert(thText, values, category);
 
                     } else {
                         // ── 유형 B: FEATURE 행 ───────────────────────────────
-                        // 기능명: FeatureTags 영역을 제거한 후의 텍스트 사용
-                        //   → OptionalIcon 셀도 포함해서 탐색 (기능명이 해당 셀에 있을 수 있음)
-                        //   → Unavailable 셀만 제외
                         let featureName = '';
                         for (const td of cells) {
                             if (isUnavailable(td)) continue;
@@ -461,19 +532,19 @@ class LexusSpecScraper:
                         const values = cells.slice(0, nTrims).map(td => {
                             if (isUnavailable(td))           return 'Unavailable';
                             if (hasIcon(td, 'OptionalIcon')) return 'Optional';
-                            if (hasIcon(td, 'PackageIcon'))  return 'Standard';
+                            if (hasIcon(td, 'PackageIcon'))  return 'Optional';
                             const text = cleanText(td.innerText);
                             return text ? 'Standard' : 'Unavailable';
                         });
 
                         while (values.length < nTrims) values.push('Unavailable');
-                        results.push([featureName, values, category]);
+                        upsert(featureName, values, category);
                     }
                 });
 
-                return results;
+                return [...mergeMap.entries()].map(([name, {values, category}]) => [name, values, category]);
             }
-        """, {"nTrims": n_trims, "drawerIds": drawer_ids})
+        """, n_trims)
 
         print(f"[DEBUG] JS extracted {len(rows_data)} rows")
 
