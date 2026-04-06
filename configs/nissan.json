@@ -1,0 +1,60 @@
+{
+  "brand": "Nissan",
+  "models": {
+    "altima": {
+      "urls": [
+        "https://www.nissanusa.com/vehicles/cars/altima/specs-trims.html",
+        "https://www.nissanusa.com/vehicles/cars/altima/specs-trims.html?language=en&compare=13216-K01-13216-13416-K02-13416"
+      ]
+    },
+    "armada": {
+      "urls": [
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/armada/specs-trims.html?language=en&compare=56116-56016-56316-56516",
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/armada/specs-trims.html?language=en&compare=56216-56416-56616-59016",
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/armada/specs-trims.html?language=en&compare=56816"
+      ]
+    },
+    "frontier": {
+      "urls": [
+        "https://www.nissanusa.com/vehicles/trucks/frontier/specs-trims.html?language=en&compare=31116-32116-32316-K05-32316",
+        "https://www.nissanusa.com/vehicles/trucks/frontier/specs-trims.html?language=en&compare=31016-33316-K05-33316-32516",
+        "https://www.nissanusa.com/vehicles/trucks/frontier/specs-trims.html?language=en&compare=32016-32216-K05-32216-33216",
+        "https://www.nissanusa.com/vehicles/trucks/frontier/specs-trims.html?language=en&compare=K05-33216-32416-33416"
+      ]
+    },
+    "kicks": {
+      "urls": [
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/kicks/specs-trims.html?language=en&compare=21116-21016-21316-21516",
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/kicks/specs-trims.html?language=en&compare=21216-21416"
+      ]
+    },
+    "kicks-play": {
+      "url": "https://www.nissanusa.com/vehicles/crossovers-suvs/kicks-play/specs-trims.html"
+    },
+    "murano": {
+      "url": "https://www.nissanusa.com/vehicles/crossovers-suvs/murano/specs-trims.html"
+    },
+    "pathfinder": {
+      "urls": [
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/pathfinder/specs-trims.html",
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/pathfinder/specs-trims.html?language=en&compare=52316-52516-52716"
+      ]
+    },
+    "rogue": {
+      "urls": [
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/rogue/specs-trims.html?language=en&compare=54116-54316-54016-28316",
+        "https://www.nissanusa.com/vehicles/crossovers-suvs/rogue/specs-trims.html?language=en&compare=54216-54416-28216-54816"
+      ]
+    },
+    "rogue-phev": {
+      "url": "https://www.nissanusa.com/vehicles/crossovers-suvs/rogue-plug-in-hybrid/specs-trims.html"
+    },
+    "sentra": {
+      "url": "https://www.nissanusa.com/vehicles/cars/sentra/specs-trims.html"
+    }
+  },
+  "wait_strategy": {
+    "wait_until": "domcontentloaded",
+    "wait_for_selector": ".featured-compare"
+  }
+}

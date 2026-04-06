@@ -1,0 +1,42 @@
+{
+  "brand": "Mazda",
+  "models": {
+    "mazda3-sedan": {
+      "url": "https://www.mazdausa.com/vehicles/mazda3-sedan/compare-vehicle-specs-and-trims"
+    },
+    "mazda3-hatchback": {
+      "url": "https://www.mazdausa.com/vehicles/mazda3-hatchback/compare-vehicle-specs-and-trims"
+    },
+    "cx-30": {
+      "url": "https://www.mazdausa.com/vehicles/cx-30/compare-vehicle-specs-and-trims"
+    },
+    "cx-5": {
+      "url": "https://www.mazdausa.com/vehicles/cx-5/compare-vehicle-specs-and-trims"
+    },
+    "cx-5-2025": {
+      "url": "https://www.mazdausa.com/vehicles/2025-cx-5/compare-vehicle-specs-and-trims"
+    },
+    "cx-50": {
+      "url": "https://www.mazdausa.com/vehicles/cx-50/compare-vehicle-specs-and-trims"
+    },
+    "cx-50-hybrid": {
+      "url": "https://www.mazdausa.com/vehicles/cx-50-hybrid/compare-vehicle-specs-and-trims"
+    },
+    "cx-70": {
+      "url": "https://www.mazdausa.com/vehicles/cx-70/compare-vehicle-specs-and-trims"
+    },
+    "cx-70-phev": {
+      "url": "https://www.mazdausa.com/vehicles/cx-70-phev/compare-vehicle-specs-and-trims"
+    },
+    "cx-90": {
+      "url": "https://www.mazdausa.com/vehicles/cx-90/compare-vehicle-specs-and-trims"
+    },
+    "cx-90-phev": {
+      "url": "https://www.mazdausa.com/vehicles/cx-90-phev/compare-vehicle-specs-and-trims"
+    }
+  },
+  "wait_strategy": {
+    "wait_until": "domcontentloaded",
+    "wait_for_selector": "[class*=\"Accordionstyles__StyledAccordionHeader\"]"
+  }
+}

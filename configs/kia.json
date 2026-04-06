@@ -11,6 +11,36 @@
         "value_cells": ".specs-compare__feature--availability"
       }
     },
+    "sportage": {
+      "url": "https://www.kia.com/us/en/sportage/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "sportage_hybrid": {
+      "url": "https://www.kia.com/us/en/sportage-hybrid/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "sportage_phev": {
+      "url": "https://www.kia.com/us/en/sportage-plug-in-hybrid/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
     "telluride": {
       "url": "https://www.kia.com/us/en/telluride/specs-compare",
       "selectors": {
@@ -21,8 +51,98 @@
         "value_cells": ".specs-compare__feature--availability"
       }
     },
-    "sportage": {
-      "url": "https://www.kia.com/us/en/sportage/specs-compare",
+    "sorento": {
+      "url": "https://www.kia.com/us/en/sorento/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "sorento_hybrid": {
+      "url": "https://www.kia.com/us/en/sorento-hybrid/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "sorento_phev": {
+      "url": "https://www.kia.com/us/en/sorento-plug-in-hybrid/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "seltos": {
+      "url": "https://www.kia.com/us/en/seltos/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "carnival": {
+      "url": "https://www.kia.com/us/en/carnival-mpv/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "carnival_hybrid": {
+      "url": "https://www.kia.com/us/en/carnival-mpv-hybrid/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "k5": {
+      "url": "https://www.kia.com/us/en/k5/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "k4": {
+      "url": "https://www.kia.com/us/en/k4/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "niro_ev": {
+      "url": "https://www.kia.com/us/en/niro-ev/specs-compare",
+      "selectors": {
+        "trim_header": ".trim-container__name",
+        "trim_price": ".trim-container__msrp",
+        "spec_row": ".section-wrapper",
+        "feature_name": ".specs-compare__feature--title",
+        "value_cells": ".specs-compare__feature--availability"
+      }
+    },
+    "niro_phev": {
+      "url": "https://www.kia.com/us/en/niro-plug-in-hybrid/specs-compare",
       "selectors": {
         "trim_header": ".trim-container__name",
         "trim_price": ".trim-container__msrp",
@@ -37,7 +157,8 @@
     "○": "Optional",
     "—": "Unavailable",
     "–": "Unavailable",
-    "•": "Standard"
+    "•": "Standard",
+    "Included": "Standard"
   },
   "wait_strategy": {
     "wait_until": "domcontentloaded",

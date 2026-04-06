@@ -6,10 +6,12 @@ from pathlib import Path
 from engine.scraper import SpecScraper
 from engine.lexus_scraper import LexusSpecScraper
 from engine.mazda_scraper import MazdaSpecScraper
+from engine.nissan_scraper import NissanSpecScraper
 
 _BRAND_SCRAPER = {
     "lexus": LexusSpecScraper,
     "mazda": MazdaSpecScraper,
+    "nissan": NissanSpecScraper,
 }
 
 
