@@ -123,11 +123,8 @@ class NissanSpecScraper:
                     f.write(page.content())
                 return None
 
-        # ── SSR HTML 스냅샷: accordion 클릭 전에 캡처 ────────────────────
-        # React가 accordion을 재렌더링하면 피처 요소가 63개 이상 사라지므로
-        # 클릭 전 SSR HTML 을 기준으로 파싱한다.
-        html_snapshot = page.content()
-        print(f"[INFO] HTML snapshot captured ({len(html_snapshot):,} chars)")
+        # accordion 확장 + 전체 스크롤로 lazy-load 콘텐츠를 모두 렌더링
+        html_snapshot = self._full_load_and_snapshot(page)
 
         # 트림명은 sticky 헤더에 항상 존재 → 라이브 DOM에서 추출
         trim_names = self._get_trim_names(page)
@@ -137,6 +134,49 @@ class NissanSpecScraper:
         print(f"[INFO] Trims ({len(trim_names)}): {trim_names}")
 
         return self._parse_all_rows(page, trim_names, html_snapshot)
+
+    # ------------------------------------------------------------------
+    # Full load + snapshot
+    # ------------------------------------------------------------------
+
+    def _full_load_and_snapshot(self, page) -> str:
+        """
+        필터 라디오를 'All' 로 전환 → 모든 피처(163개) 렌더링 후 스냅샷 반환.
+
+        Nissan compare 페이지는 기본 필터가 'Featured'(107개)이므로
+        'All' 라디오 버튼을 클릭해야 difference-compare / all-compare 행이 나타난다.
+        """
+        import time
+
+        # "All" 라디오 클릭 → 전체 피처 표시
+        try:
+            page.click('#all', timeout=5000)
+            print("[INFO] Clicked 'All' filter radio button")
+        except Exception as e:
+            print(f"[WARN] Could not click 'All' radio: {e}")
+
+        time.sleep(0.5)
+
+        # feature-row 수가 안정될 때까지 폴링 (최대 10초)
+        prev = 0
+        stable = 0
+        for _ in range(10):
+            count = page.evaluate(
+                "() => document.querySelectorAll('[id^=\"feature-row-\"]').length"
+            )
+            print(f"[DEBUG] feature-row count in DOM: {count}")
+            if count == prev and count > 0:
+                stable += 1
+                if stable >= 2:
+                    break
+            else:
+                stable = 0
+            prev = count
+            time.sleep(1)
+
+        html = page.content()
+        print(f"[INFO] Snapshot captured: {count} feature-rows, {len(html):,} chars")
+        return html
 
     # ------------------------------------------------------------------
     # Trim names (라이브 DOM)

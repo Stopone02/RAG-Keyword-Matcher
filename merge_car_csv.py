@@ -28,7 +28,15 @@ def load_url_map(brand):
     
     with open(config_path, encoding="utf-8") as f:
         config = json.load(f)
-    return {k: v["url"] for k, v in config.get("models", {}).items()}
+    result = {}
+    for k, v in config.get("models", {}).items():
+        if "urls" in v:
+            result[k] = v["urls"]
+        elif "url" in v:
+            result[k] = [v["url"]]
+        else:
+            result[k] = []
+    return result
 
 def model_display_name(model_raw):
     """'Carnival_Hybrid' -> 'Carnival Hybrid'"""
@@ -115,13 +123,17 @@ def build_combined_sheet(ws, all_data):
 def build_individual_sheet(ws, headers, rows, url=""):
     trim_cols = get_trim_columns(headers)
     year = rows[0].get("Year", "") if rows else ""
-    
+
     ws.cell(row=1, column=1, value="Year")
     ws.cell(row=1, column=2, value=year)
-    ws.cell(row=1, column=3, value="URL")
-    ws.cell(row=1, column=4, value=url)
-    
-    HEADER_ROW = 3
+
+    # url이 리스트일 수도 있고 문자열일 수도 있음
+    urls = url if isinstance(url, list) else ([url] if url else [])
+    for i, u in enumerate(urls):
+        ws.cell(row=1 + i, column=3, value="URL" if i == 0 else "")
+        ws.cell(row=1 + i, column=4, value=u)
+
+    HEADER_ROW = max(3, 1 + len(urls) + 1)
     ws.cell(row=HEADER_ROW, column=1, value="카테고리")
     ws.cell(row=HEADER_ROW, column=2, value="피처")
     apply_header_style(ws.cell(row=HEADER_ROW, column=1))
@@ -165,7 +177,7 @@ def main(brand_name):
         trim_cols = get_trim_columns(headers)
         sheet_name = sheet_name_from_filename(brand_name, filename)
         
-        model_key = filename.replace(f"{brand_name}_", "").replace(".csv", "")
+        model_key = filename.replace(f"{brand_name.lower()}_", "").replace(".csv", "")
         url = url_map.get(model_key, "")
         file_data.append((sheet_name, headers, rows, url))
 
