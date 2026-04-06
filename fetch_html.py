@@ -81,7 +81,8 @@ def main() -> None:
               f"Available: {list(config['models'].keys())}")
         sys.exit(1)
 
-    url = model_config["url"]
+    urls = model_config.get("urls") or [model_config["url"]]
+    url = urls[0]
     wait_strategy = config.get("wait_strategy", {})
 
     out_dir = Path("storage") / "html"

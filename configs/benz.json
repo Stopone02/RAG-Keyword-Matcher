@@ -1,0 +1,47 @@
+{
+  "brand": "Mercedes-Benz",
+  "models": {
+    "glc": {
+      "urls": [
+        "https://www.mbusa.com/en/compare-vehicles/2026-glc-glc43c4/2026-glc-glc300c4/2026-glc-glc63c4e",
+        "https://www.mbusa.com/en/compare-vehicles/2026-glc-glc43w4/2026-glc-glc300w4/2026-glc-glc350e4",
+        "https://www.mbusa.com/en/compare-vehicles/2026-glc-glc63w4e/2026-glc-glc300w"
+      ]
+    },
+    "gla": {
+      "urls": [
+        "https://www.mbusa.com/en/compare-vehicles/2026-gla-gla35w4/2026-gla-gla250w/2026-gla-gla250w4"
+      ]
+    },
+    "gls": {
+      "urls": [
+        "https://www.mbusa.com/en/compare-vehicles/2026-gls-gls63w4/2026-gls-gls580w4/2026-gls-gls450w4",
+        "https://www.mbusa.com/en/compare-vehicles/2026-gls-gls600z4"
+      ]
+    },
+    "c-class": {
+      "urls": [
+        "https://www.mbusa.com/en/compare-vehicles/2026-c-c43w4/2026-c-c63w4se/2026-c-c300w4",
+        "https://www.mbusa.com/en/compare-vehicles/2026-c-c300w"
+      ]
+    },
+    "e-class": {
+      "urls": [
+        "https://www.mbusa.com/en/compare-vehicles/2026-e-e53ew4/2026-e-e350w4/2026-e-e350w",
+        "https://www.mbusa.com/en/compare-vehicles/2026-e-e53es4/2026-e-e450s4/2026-e-e450w4"
+      ]
+    },
+    "gle": {
+      "urls": [
+        "https://www.mbusa.com/en/compare-vehicles/2026-gle-gle53c4/2026-gle-gle450c4/2026-gle-gle63c4s",
+        "https://www.mbusa.com/en/compare-vehicles/2026-gle-gle53w4/2026-gle-gle350w4/2026-gle-gle450w4",
+        "https://www.mbusa.com/en/compare-vehicles/2026-gle-gle63w4s/2026-gle-gle350w/2026-gle-gle450e4",
+        "https://www.mbusa.com/en/compare-vehicles/2026-gle-gle580w4"
+      ]
+    }
+  },
+  "wait_strategy": {
+    "wait_until": "domcontentloaded",
+    "wait_for_selector": ".compare-model-spec__item"
+  }
+}
