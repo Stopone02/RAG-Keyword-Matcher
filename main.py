@@ -8,12 +8,14 @@ from engine.lexus_scraper import LexusSpecScraper
 from engine.mazda_scraper import MazdaSpecScraper
 from engine.nissan_scraper import NissanSpecScraper
 from engine.benz_scraper import BenzSpecScraper
+from engine.ram_scraper import RamSpecScraper
 
 _BRAND_SCRAPER = {
     "lexus": LexusSpecScraper,
     "mazda": MazdaSpecScraper,
     "nissan": NissanSpecScraper,
     "benz": BenzSpecScraper,
+    "ram": RamSpecScraper,
 }
 
 
@@ -29,7 +31,11 @@ def load_config(brand: str) -> dict:
 def save_result(data: dict, brand: str, model: str) -> Path:
     output_dir = Path("storage") / "raw"
     output_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{brand.lower()}_{model.lower()}_raw.json"
+    year = data.get("year")
+    if year:
+        filename = f"{brand.lower()}_{model.lower()}_{year}_raw.json"
+    else:
+        filename = f"{brand.lower()}_{model.lower()}_raw.json"
     output_path = output_dir / filename
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -83,11 +89,14 @@ def main() -> None:
         print(f"{'='*60}")
 
         result = scraper.scrape_model(model)
-        if result:
-            path = save_result(result, args.brand, model)
-            results.append(str(path))
-        else:
+        if not result:
             print(f"[WARN] No data collected for model '{model}'")
+            continue
+        # 연도별 분리 결과(list) 또는 단일 결과(dict) 모두 처리
+        result_list = result if isinstance(result, list) else [result]
+        for item in result_list:
+            path = save_result(item, args.brand, model)
+            results.append(str(path))
 
     print(f"\n[DONE] Completed {len(results)}/{len(models_to_crawl)} model(s)")
     for r in results:

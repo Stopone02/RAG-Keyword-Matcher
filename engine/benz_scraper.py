@@ -131,7 +131,7 @@ class BenzSpecScraper:
         wait_sel = self.wait_strategy.get("wait_for_selector", ".compare-model-spec__item")
         if wait_sel:
             try:
-                page.wait_for_selector(wait_sel, timeout=45000)
+                page.wait_for_selector(wait_sel, timeout=45000, state="attached")
                 print(f"[INFO] Page ready: '{wait_sel}' found")
             except PlaywrightTimeoutError:
                 print(f"[WARN] '{wait_sel}' timed out — saving debug snapshot")
@@ -282,25 +282,29 @@ class BenzSpecScraper:
 
                         // 스펙 행 순회
                         for (const row of item.querySelectorAll('.compare-body__group-container')) {
-                            const containers = [...row.querySelectorAll(':scope > .compare-body__container')];
-                            if (containers.length === 0) continue;
+                            // placeholder 포함 모든 자식을 위치 그대로 순회해야
+                            // 트림 컬럼 인덱스가 정확히 매핑됨
+                            const children = [...row.children];
 
-                            // 스펙명: 모든 컨테이너에서 동일하므로 첫 번째에서 추출
-                            const firstItem = containers[0].querySelector('.compare-model-spec__item');
-                            if (!firstItem) continue;
-                            const featureName = firstItem.querySelector('.compare-model-spec__title')?.textContent.trim();
-                            if (!featureName) continue;
-
-                            // 트림별 값 (컬럼 수가 nTrims보다 적으면 빈 문자열로 패딩)
+                            let featureName = null;
                             const values = [];
+
                             for (let i = 0; i < nTrims; i++) {
-                                const container = containers[i];
-                                if (!container) { values.push(''); continue; }
-                                const specItem = container.querySelector('.compare-model-spec__item');
+                                const child = children[i];
+                                if (!child || child.classList.contains('compare-body__placeholder')) {
+                                    values.push('');
+                                    continue;
+                                }
+                                const specItem = child.querySelector('.compare-model-spec__item');
                                 if (!specItem) { values.push(''); continue; }
+                                if (!featureName) {
+                                    featureName = specItem.querySelector('.compare-model-spec__title')?.textContent.trim() || null;
+                                }
                                 const descEl = specItem.querySelector('.compare-model-spec__description');
                                 values.push(descEl ? cleanText(descEl) : '');
                             }
+
+                            if (!featureName) continue;
 
                             if (values.every(v => !v)) continue;
                             results.push({
