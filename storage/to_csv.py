@@ -22,8 +22,8 @@ OUT_DIR = Path(__file__).parent / "csv"
 def _entry_value(entry) -> str:
     """features 값이 dict(신형) 또는 str(구형) 모두 처리."""
     if isinstance(entry, dict):
-        return entry.get("value", "Unavailable") or "Unavailable"
-    return entry or "Unavailable"
+        return entry.get("value", "not available") or "not available"
+    return entry or "not available"
 
 
 def _entry_category(entry) -> str:
@@ -81,7 +81,7 @@ def convert(json_path: Path) -> Path:
         for feat in all_features:
             row = [brand, model, year, feature_category.get(feat, ""), feat]
             for trim in trim_names:
-                entry = trims[trim].get("features", {}).get(feat, "Unavailable")
+                entry = trims[trim].get("features", {}).get(feat, "not available")
                 row.append(_entry_value(entry))
             writer.writerow(row)
 

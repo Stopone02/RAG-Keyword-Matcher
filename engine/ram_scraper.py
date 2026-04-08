@@ -114,7 +114,7 @@ class RamSpecScraper:
                     for i in range(0, len(trims), 4):
                         chunk = trims[i: i + 4]
                         delay = random.uniform(2.0, 5.0)
-                        print(f"\n[INFO] ({drive}|{cab}|{box}) chunk {i//4+1} — wait {delay:.1f}s")
+                        print(f"\n[INFO] ({drive}|{cab}|{box}) chunk {i//4+1} - wait {delay:.1f}s")
                         time.sleep(delay)
 
                         batch = self._call_compare_api(page, chunk)
@@ -251,19 +251,29 @@ class RamSpecScraper:
 
     def _parse_compare_response(self, data: dict) -> dict | None:
         """
-        응답 구조:
-          competitors[]:    referenceId, description, prices.base
-          sections{}:       key → {description, groupings[]}
-          groupings{}:      grpId → {description, compareIds[]}
-          compare{}:        specId → {description, comparison{refId: {text}}}
+        사이트 탭 기준 파싱.
+
+        사이트 탭 구조 (equipment-categories.views):
+          View 1: Powertrain   → subCategories → options (state: S/C/U)
+          View 2: Packages     → subCategories → options
+          View 3: Exterior     → subCategories → options
+          View 4: Interior     → subCategories → options
+
+        수치 사양 (sections.dimensions → groupings.grpSpecsAndDim → compare):
+          Dimensions: Specs and Dimensions 그루핑
+
+        가격 (sections.highlights → grpHighlightsPricing → compare):
+          Pricing: Base Price, Destination Fee, Net Price
+
+        option.state 값:
+          'S' = standard, 'C' = optional(추가 가능), 'U' or '' = not available
         """
         competitors = data.get("competitors", [])
         if not competitors:
             print("[WARN] No competitors in response")
             return None
 
-        # referenceId → (trim_name, base_price)
-        # 연도를 trim명 앞에 붙여 2025/2026 중복 방지
+        # referenceId → {name, price}
         ref_map: dict = {
             c["referenceId"]: {
                 "name": f"{c['year']} {c.get('description', '')}".strip() if c.get("year") else c.get("description", ""),
@@ -272,7 +282,6 @@ class RamSpecScraper:
             for c in competitors
         }
 
-        # 결과 구조 초기화
         result = {
             info["name"]: {
                 "price_msrp": f"${info['price']:,.0f}" if info["price"] else "",
@@ -282,44 +291,98 @@ class RamSpecScraper:
             if info["name"]
         }
 
+        ec = data.get("equipment-categories", {})
+        views = ec.get("views", {})
+        subcats = ec.get("subCategories", {})
+        options = data.get("options", {})
         compare = data.get("compare", {})
-        sections = data.get("sections", {})
         groupings = data.get("groupings", {})
 
-        # sections → groupings → compareIds 순서로 iterate
-        # sections 키를 숫자 정렬하여 사이트와 동일한 순서 보장
-        for _, sec in sorted(sections.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
-            sec_desc = sec.get("description", "")   # 화살표 옆 카테고리 이름
-            for grp_id in sec.get("groupings", []):
-                grp = groupings.get(grp_id, {})
-                for compare_id in grp.get("compareIds", []):
-                    spec = compare.get(str(compare_id))
-                    if not spec:
+        # ── Part 1: 사이트 탭 (View 1~4) ─────────────────────────────────
+        # 수집 순서: view → 트림별 subCategory 순서(order) → 옵션 순서(order)
+        # 동일 피쳐명이 이미 있으면 덮어쓰지 않음 (variation만 다른 중복 옵션 처리)
+        seen_feats_by_trim: dict[str, set] = {name: set() for name in result}
+
+        for view_id in sorted(views.keys(), key=lambda x: int(x)):
+            view_data = views[view_id]
+            view_name = view_data.get("description", f"View {view_id}")
+
+            # 트림마다 subCategory 순서 → 옵션 순서대로 수집
+            for ref_id, info in ref_map.items():
+                if not info["name"]:
+                    continue
+                trim_name = info["name"]
+                ref_view_data = view_data.get("models", {}).get(ref_id, {})
+                sc_id_order = [str(s) for s in ref_view_data.get("subCategories", [])]
+                sc_set = set(sc_id_order)
+
+                # 이 트림 × 이 view에 해당하는 옵션 수집 후 (sc_id 순서, opt order) 정렬
+                entries = []
+                for opt_key, opt_data in options.items():
+                    m = opt_data.get("models", {}).get(ref_id)
+                    if not m:
                         continue
-                    feat_name = spec.get("description", str(compare_id))
-                    for ref_id, val_data in spec.get("comparison", {}).items():
-                        info = ref_map.get(ref_id)
-                        if not info or not info["name"]:
-                            continue
-                        trim_name = info["name"]
-                        text = val_data.get("text", "")
-                        numeric = val_data.get("numeric")
-                        value = self._normalize_value(
-                            text,
-                            val_data.get("standard", False),
-                            val_data.get("options", []),
-                            feat_name,
-                            numeric,
-                        )
-                        # 항상 덮어써서 카테고리가 정렬된 섹션 기준으로 확정됨
-                        # (dict 삽입 순서는 첫 등장 위치 유지, 값/카테고리만 갱신)
-                        if feat_name not in result[trim_name]["features"]:
-                            result[trim_name]["features"][feat_name] = {"value": value, "category": sec_desc}
-                        else:
-                            result[trim_name]["features"][feat_name]["category"] = sec_desc
-                            if not result[trim_name]["features"][feat_name]["value"] or \
-                               result[trim_name]["features"][feat_name]["value"] == "not available":
-                                result[trim_name]["features"][feat_name]["value"] = value
+                    sc_id = str(m.get("subCategoryId", ""))
+                    if sc_id not in sc_set:
+                        continue
+                    sc_rank = sc_id_order.index(sc_id)
+                    opt_order = m.get("order", 9999)
+                    entries.append((sc_rank, opt_order, opt_key, opt_data, m, sc_id))
+
+                entries.sort(key=lambda x: (x[0], x[1]))
+
+                for sc_rank, opt_order, opt_key, opt_data, m, sc_id in entries:
+                    feat_name = opt_data.get("description", opt_key)
+                    sc = subcats.get(sc_id, {})
+                    cat = sc.get("description", view_name)
+                    state = m.get("state", "")
+                    if state == "S":
+                        value = "standard"
+                    elif state == "C":
+                        value = "optional"
+                    else:
+                        value = "not available"
+
+                    if feat_name not in seen_feats_by_trim[trim_name]:
+                        seen_feats_by_trim[trim_name].add(feat_name)
+                        result[trim_name]["features"][feat_name] = {"value": value, "category": cat}
+
+        # ── Part 2: Dimensions (수치 사양) ────────────────────────────────
+        dim_grp = groupings.get("grpSpecsAndDim", {})
+        for cid in dim_grp.get("compareIds", []):
+            spec = compare.get(str(cid))
+            if not spec:
+                continue
+            feat_name = spec.get("description", str(cid))
+            for ref_id, val_data in spec.get("comparison", {}).items():
+                info = ref_map.get(ref_id)
+                if not info or not info["name"]:
+                    continue
+                trim_name = info["name"]
+                text = val_data.get("text") or ""
+                numeric = val_data.get("numeric")
+                value = self._normalize_spec_value(text, numeric)
+                result[trim_name]["features"][feat_name] = {"value": value, "category": "Specs and Dimensions"}
+
+        # ── Part 3: Pricing ───────────────────────────────────────────────
+        # grpHighlightsPricing: base-price, destination-fee, net-price(=total-price)
+        pricing_grp = groupings.get("grpHighlightsPricing", {})
+        for cid in pricing_grp.get("compareIds", []):
+            # total-price는 사이트 표시명이 net-price
+            actual_cid = "net-price" if str(cid) == "total-price" else str(cid)
+            spec = compare.get(actual_cid)
+            if not spec:
+                continue
+            feat_name = spec.get("description", actual_cid)
+            for ref_id, val_data in spec.get("comparison", {}).items():
+                info = ref_map.get(ref_id)
+                if not info or not info["name"]:
+                    continue
+                trim_name = info["name"]
+                numeric = val_data.get("numeric")
+                text = val_data.get("text") or ""
+                value = self._normalize_spec_value(text, numeric)
+                result[trim_name]["features"][feat_name] = {"value": value, "category": "Pricing"}
 
         feat_counts = [len(v["features"]) for v in result.values()]
         print(f"[DEBUG] Parsed {len(result)} trims, features/trim: {feat_counts}")
@@ -330,6 +393,16 @@ class RamSpecScraper:
     # ──────────────────────────────────────────────────────────────────
 
     _UNAVAILABLE_WORDS = {"not available", "unavailable", "n/a"}
+
+    @staticmethod
+    def _normalize_spec_value(text: str, numeric) -> str:
+        """Dimensions/Pricing 수치 사양용 정규화.
+        text가 있으면 그대로, 없으면 numeric을 문자열로 반환."""
+        if text:
+            return text
+        if numeric is not None and numeric != "":
+            return str(numeric)
+        return "not available"
 
     @staticmethod
     def _normalize_value(
@@ -363,8 +436,8 @@ class RamSpecScraper:
             return text
 
         # text 없음 or text == feature 이름
-        # numeric은 0도 유효한 값이므로 None 여부만 체크
-        if numeric is not None and numeric != "":
+        # numeric=0은 패키지 포함 여부($0=포함)를 의미 → standard/options로 판별
+        if numeric is not None and numeric != "" and numeric != 0:
             return str(numeric)
         if standard:
             return "standard"
