@@ -336,7 +336,8 @@ class RamSpecScraper:
                     sc = subcats.get(sc_id, {})
                     cat = sc.get("description", view_name)
                     state = m.get("state", "")
-                    if state == "S":
+                    is_standard = m.get("standard", False)
+                    if state == "S" or is_standard:
                         value = "standard"
                     elif state == "C":
                         value = "optional"
