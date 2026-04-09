@@ -31,11 +31,7 @@ def load_config(brand: str) -> dict:
 def save_result(data: dict, brand: str, model: str) -> Path:
     output_dir = Path("storage") / "raw"
     output_dir.mkdir(parents=True, exist_ok=True)
-    year = data.get("year")
-    if year:
-        filename = f"{brand.lower()}_{model.lower()}_{year}_raw.json"
-    else:
-        filename = f"{brand.lower()}_{model.lower()}_raw.json"
+    filename = f"{brand.lower()}_{model.lower()}_raw.json"
     output_path = output_dir / filename
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

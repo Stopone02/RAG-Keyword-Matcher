@@ -204,11 +204,14 @@ class RamSpecScraper:
             box   = filter_map.get("filterGroup4", {}).get(fc.get("filterGroup4", {}).get("id"), "?")
             trim  = filter_map.get("filterGroup5", {}).get(fc.get("filterGroup5", {}).get("id"), "Unknown")
 
-            # allowed_trims 필터링
+            # allowed_trims 필터링 (filterGroup5 기준)
             if allowed_set and self._normalize_trim_name(trim) not in allowed_set:
                 continue
 
-            dedup = (drive, cab, box, trim)
+            # longDescription을 dedup 키로 사용 → ProMaster처럼 추가 차량등급이
+            # 별도 filterGroup에 있어도 모든 조합을 빠짐없이 수집
+            long_desc = cfg.get("descriptions", {}).get("longDescription", "")
+            dedup = long_desc or (drive, cab, box, trim)
             if dedup in seen:
                 continue
             seen.add(dedup)
@@ -372,42 +375,41 @@ class RamSpecScraper:
                         seen_feats_by_trim[trim_name].add(feat_name)
                         result[trim_name]["features"][feat_name] = {"value": value, "category": cat}
 
-        # ── Part 2: Dimensions (수치 사양) ────────────────────────────────
-        dim_grp = groupings.get("grpSpecsAndDim", {})
-        for cid in dim_grp.get("compareIds", []):
-            spec = compare.get(str(cid))
-            if not spec:
-                continue
-            feat_name = spec.get("description", str(cid))
-            for ref_id, val_data in spec.get("comparison", {}).items():
-                info = ref_map.get(ref_id)
-                if not info or not info["name"]:
-                    continue
-                trim_name = info["name"]
-                text = val_data.get("text") or ""
-                numeric = val_data.get("numeric")
-                value = self._normalize_spec_value(text, numeric)
-                result[trim_name]["features"][feat_name] = {"value": value, "category": "Specs and Dimensions"}
+        # ── Part 2: 모든 groupings의 스펙 텍스트/수치 값 수집 ───────────────
+        # compare dict의 모든 grouping을 순회하여 누락 없이 수집.
+        # - PKG-* compareId는 Views(Part 1)에서 이미 options로 처리됨 → 스킵
+        # - total-price는 사이트 표시명 net-price로 alias
+        # - 중복 compareId는 첫 번째 grouping 기준으로 처리 (first-wins)
+        # - 같은 피처가 Part 1(options)에서 이미 수집된 경우 spec 텍스트값으로 덮어씀
+        _CID_ALIAS = {"total-price": "net-price"}
+        seen_cids: set = set()
 
-        # ── Part 3: Pricing ───────────────────────────────────────────────
-        # grpHighlightsPricing: base-price, destination-fee, net-price(=total-price)
-        pricing_grp = groupings.get("grpHighlightsPricing", {})
-        for cid in pricing_grp.get("compareIds", []):
-            # total-price는 사이트 표시명이 net-price
-            actual_cid = "net-price" if str(cid) == "total-price" else str(cid)
-            spec = compare.get(actual_cid)
-            if not spec:
-                continue
-            feat_name = spec.get("description", actual_cid)
-            for ref_id, val_data in spec.get("comparison", {}).items():
-                info = ref_map.get(ref_id)
-                if not info or not info["name"]:
+        for grp_v in groupings.values():
+            cat = grp_v.get("description", "")
+            for cid in grp_v.get("compareIds", []):
+                cid_str = str(cid)
+                # PKG-* 는 View 2(Packages)에서 options로 처리됨
+                if cid_str.startswith("PKG-"):
                     continue
-                trim_name = info["name"]
-                numeric = val_data.get("numeric")
-                text = val_data.get("text") or ""
-                value = self._normalize_spec_value(text, numeric)
-                result[trim_name]["features"][feat_name] = {"value": value, "category": "Pricing"}
+                actual_cid = _CID_ALIAS.get(cid_str, cid_str)
+                if actual_cid in seen_cids:
+                    continue
+                seen_cids.add(actual_cid)
+
+                spec = compare.get(actual_cid)
+                if not spec:
+                    continue
+                feat_name = spec.get("description", actual_cid)
+                for ref_id, val_data in spec.get("comparison", {}).items():
+                    info = ref_map.get(ref_id)
+                    if not info or not info["name"]:
+                        continue
+                    trim_name = info["name"]
+                    text = val_data.get("text") or ""
+                    numeric = val_data.get("numeric")
+                    value = self._normalize_spec_value(text, numeric)
+                    if value != "not available":
+                        result[trim_name]["features"][feat_name] = {"value": value, "category": cat}
 
         feat_counts = [len(v["features"]) for v in result.values()]
         print(f"[DEBUG] Parsed {len(result)} trims, features/trim: {feat_counts}")
