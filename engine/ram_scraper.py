@@ -100,7 +100,8 @@ class RamSpecScraper:
 
                 # Phase 1: CVD API → ccode 그룹
                 allowed_trims = model_cfg.get("allowed_trims")
-                groups = self._fetch_cvd_groups(page, myc, allowed_trims=allowed_trims)
+                excluded_trims = model_cfg.get("excluded_trims")
+                groups = self._fetch_cvd_groups(page, myc, allowed_trims=allowed_trims, excluded_trims=excluded_trims)
                 if not groups:
                     print(f"[WARN] No groups for {myc}")
                     continue
@@ -171,7 +172,11 @@ class RamSpecScraper:
         import re
         return re.sub(r"[^A-Z0-9 ]", "", name.upper()).strip()
 
-    def _fetch_cvd_groups(self, page, myc: str, allowed_trims: list | None = None) -> dict | None:
+    def _fetch_cvd_groups(
+        self, page, myc: str,
+        allowed_trims: list | None = None,
+        excluded_trims: list | None = None,
+    ) -> dict | None:
         api_url = CVD_API.format(myc=myc)
         print(f"[INFO] Fetching CVD: {api_url}")
         try:
@@ -189,10 +194,14 @@ class RamSpecScraper:
             for fg in data.get("filterGroups", [])
         }
 
-        # 허용 트림 정규화 집합
+        # 허용/제외 트림 정규화 집합
         allowed_set = (
             {self._normalize_trim_name(t) for t in allowed_trims}
             if allowed_trims else None
+        )
+        excluded_set = (
+            {self._normalize_trim_name(t) for t in excluded_trims}
+            if excluded_trims else None
         )
 
         groups: dict = {}
@@ -204,14 +213,21 @@ class RamSpecScraper:
             box   = filter_map.get("filterGroup4", {}).get(fc.get("filterGroup4", {}).get("id"), "?")
             trim  = filter_map.get("filterGroup5", {}).get(fc.get("filterGroup5", {}).get("id"), "Unknown")
 
+            norm_trim = self._normalize_trim_name(trim)
+
             # allowed_trims 필터링 (filterGroup5 기준)
-            if allowed_set and self._normalize_trim_name(trim) not in allowed_set:
+            if allowed_set and norm_trim not in allowed_set:
                 continue
 
-            # longDescription을 dedup 키로 사용 → ProMaster처럼 추가 차량등급이
-            # 별도 filterGroup에 있어도 모든 조합을 빠짐없이 수집
+            # excluded_trims 필터링 (filterGroup5 기준)
+            if excluded_set and norm_trim in excluded_set:
+                continue
+
+            # dedup 키: drive + longDescription の組み合わせで重複排除
+            # → ProMaster のように追加グレードが別 filterGroup にある場合も全組み合わせを収集
+            # → トラック系で drive(4X2/4X4)が異なるが longDescription が同一な場合も区別
             long_desc = cfg.get("descriptions", {}).get("longDescription", "")
-            dedup = long_desc or (drive, cab, box, trim)
+            dedup = (drive, long_desc) if long_desc else (drive, cab, box, trim)
             if dedup in seen:
                 continue
             seen.add(dedup)
