@@ -1,0 +1,25 @@
+{
+  "brand": "RAM",
+  "models": {
+    "2500": {
+      "vehicle_code": "ram_2500",
+      "model_year_codes": ["CUT202614"]
+    },
+    "1500": {
+      "vehicle_code": "ram_1500",
+      "model_year_codes": ["CUT202620"]
+    },
+    "3500": {
+      "vehicle_code": "ram_3500",
+      "model_year_codes": ["CUT202615"]
+    },
+    "promaster": {
+      "vehicle_code": "promsater",
+      "model_year_codes": ["CUT202600"]
+    },
+    "promaster_ev": {
+      "vehicle_code": "promsater_ev",
+      "model_year_codes": ["CUT202601"]
+    }
+  }
+}
