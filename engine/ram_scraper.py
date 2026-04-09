@@ -99,7 +99,8 @@ class RamSpecScraper:
                 year_calls = year_data[year]["source_calls"]
 
                 # Phase 1: CVD API → ccode 그룹
-                groups = self._fetch_cvd_groups(page, myc)
+                allowed_trims = model_cfg.get("allowed_trims")
+                groups = self._fetch_cvd_groups(page, myc, allowed_trims=allowed_trims)
                 if not groups:
                     print(f"[WARN] No groups for {myc}")
                     continue
@@ -164,7 +165,13 @@ class RamSpecScraper:
     # Phase 1: CVD API → (drive, cab, box) 그룹별 ccode 목록
     # ──────────────────────────────────────────────────────────────────
 
-    def _fetch_cvd_groups(self, page, myc: str) -> dict | None:
+    @staticmethod
+    def _normalize_trim_name(name: str) -> str:
+        """비교용 트림명 정규화: 특수문자 제거, 대문자, 공백 정리."""
+        import re
+        return re.sub(r"[^A-Z0-9 ]", "", name.upper()).strip()
+
+    def _fetch_cvd_groups(self, page, myc: str, allowed_trims: list | None = None) -> dict | None:
         api_url = CVD_API.format(myc=myc)
         print(f"[INFO] Fetching CVD: {api_url}")
         try:
@@ -182,6 +189,12 @@ class RamSpecScraper:
             for fg in data.get("filterGroups", [])
         }
 
+        # 허용 트림 정규화 집합
+        allowed_set = (
+            {self._normalize_trim_name(t) for t in allowed_trims}
+            if allowed_trims else None
+        )
+
         groups: dict = {}
         seen: set = set()
         for cfg in data.get("configurations", []):
@@ -190,6 +203,10 @@ class RamSpecScraper:
             cab   = filter_map.get("filterGroup2", {}).get(fc.get("filterGroup2", {}).get("id"), "?")
             box   = filter_map.get("filterGroup4", {}).get(fc.get("filterGroup4", {}).get("id"), "?")
             trim  = filter_map.get("filterGroup5", {}).get(fc.get("filterGroup5", {}).get("id"), "Unknown")
+
+            # allowed_trims 필터링
+            if allowed_set and self._normalize_trim_name(trim) not in allowed_set:
+                continue
 
             dedup = (drive, cab, box, trim)
             if dedup in seen:
@@ -265,8 +282,12 @@ class RamSpecScraper:
         가격 (sections.highlights → grpHighlightsPricing → compare):
           Pricing: Base Price, Destination Fee, Net Price
 
-        option.state 값:
-          'S' = standard, 'C' = optional(추가 가능), 'U' or '' = not available
+        option 가용성 판별:
+          state='S' OR standard=True           → standard
+          state='C'                             → optional
+          state='U' + msrp>0                   → optional (선택 가능, 미선택)
+          pricing.included=True + standard=False → optional (패키지/엔진 구성에 따라 포함)
+          그 외                                 → not available
         """
         competitors = data.get("competitors", [])
         if not competitors:
@@ -337,9 +358,12 @@ class RamSpecScraper:
                     cat = sc.get("description", view_name)
                     state = m.get("state", "")
                     is_standard = m.get("standard", False)
+                    pricing = m.get("pricing", {})
+                    msrp = pricing.get("msrp", 0) or 0
+                    is_included = pricing.get("included", False)
                     if state == "S" or is_standard:
                         value = "standard"
-                    elif state == "C":
+                    elif state == "C" or (state == "U" and msrp > 0) or is_included:
                         value = "optional"
                     else:
                         value = "not available"
