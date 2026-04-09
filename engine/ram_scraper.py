@@ -123,6 +123,19 @@ class RamSpecScraper:
                         if batch is None:
                             continue
 
+                        # Compare API 응답에서도 excluded_trims 재필터링
+                        # (CVD 단계에서 걸러지지 않고 응답에 포함되는 경우 대비)
+                        if excluded_trims:
+                            excl_norms = {self._normalize_trim_name(t) for t in excluded_trims}
+                            filtered = {}
+                            for k, v in batch.items():
+                                norm_k = self._normalize_trim_name(k)
+                                if any(ex in norm_k for ex in excl_norms):
+                                    print(f"[INFO] Excluded trim from response: {k}")
+                                else:
+                                    filtered[k] = v
+                            batch = filtered
+
                         year_calls.append({
                             "drive": drive, "cab": cab, "box": box, "year": year,
                             "codes": [t["ccode"] for t in chunk],
@@ -227,7 +240,7 @@ class RamSpecScraper:
             # → ProMaster のように追加グレードが別 filterGroup にある場合も全組み合わせを収集
             # → トラック系で drive(4X2/4X4)が異なるが longDescription が同一な場合も区別
             long_desc = cfg.get("descriptions", {}).get("longDescription", "")
-            dedup = (drive, long_desc) if long_desc else (drive, cab, box, trim)
+            dedup = (drive, cab, long_desc) if long_desc else (drive, cab, box, trim)
             if dedup in seen:
                 continue
             seen.add(dedup)
